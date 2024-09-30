@@ -1,0 +1,86 @@
+import * as vscode from "vscode";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as ts from "typescript";
+
+export function activate(context: vscode.ExtensionContext) {
+	console.log("hhw");
+
+	const disposable = vscode.languages.registerCompletionItemProvider(
+		["javascript", "typescript"],
+		{
+			provideCompletionItems(
+				document: vscode.TextDocument,
+				position: vscode.Position,
+			) {
+				const line = document.lineAt(position);
+				const funArg = line.text.match(/\(["'](\S*)["']/);
+				if (funArg) {
+					const centerPath = funArg[1]?.trim() || "";
+					const text = document.getText();
+					const sourceFile = ts.createSourceFile(
+						document.fileName,
+						text,
+						ts.ScriptTarget.Latest,
+						true,
+					);
+
+					const functionName2seg: Map<string, vscode.CompletionItem[]> =
+						new Map();
+
+					ts.forEachChild(sourceFile, (node) => {
+						if (ts.isFunctionDeclaration(node) && node.name) {
+							const start = node.getStart(sourceFile);
+							const lastLine =
+								sourceFile.getLineAndCharacterOfPosition(start).line - 1;
+							if (lastLine < 0) {
+								return null;
+							}
+							const prevLine = document.lineAt(lastLine);
+							const baseUrlM = prevLine.text.match(/@auto-path:\s*(.+)/);
+							if (baseUrlM) {
+								const baseUrl = baseUrlM[1].trim();
+								const completionItems: vscode.CompletionItem[] = [];
+
+								const currentDir = path.dirname(document.uri.fsPath);
+
+								const fullBaseUrl = path.join(currentDir, baseUrl, centerPath);
+
+								try {
+									const files = fs.readdirSync(fullBaseUrl);
+									for (const file of files) {
+										const item = new vscode.CompletionItem(`${file}`);
+										const fileType = fs.lstatSync(path.join(fullBaseUrl, file));
+										if (fileType.isDirectory()) {
+											item.kind = vscode.CompletionItemKind.Folder;
+											item.insertText = new vscode.SnippetString(`${file}/`);
+										} else {
+											item.kind = vscode.CompletionItemKind.File;
+											item.insertText = new vscode.SnippetString(`${file}`);
+										}
+										completionItems.push(item);
+										functionName2seg.set(node.name.text, completionItems);
+									}
+								} catch (error) {
+									console.error("读取目录失败:", error);
+								}
+							}
+						}
+					});
+
+					for (const k of functionName2seg.keys()) {
+						if (line.text.match(k)) {
+							return functionName2seg.get(k);
+						}
+					}
+				}
+
+				return undefined;
+			},
+		},
+	);
+
+	context.subscriptions.push(disposable);
+}
+
+export function deactivate() {}
