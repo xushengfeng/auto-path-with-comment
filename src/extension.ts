@@ -52,19 +52,27 @@ export function activate(context: vscode.ExtensionContext) {
 					for (const l of definitions) {
 						const { line, character } = l.targetRange.start;
 						console.log(`函数定义在行 ${line + 1} 列 ${character + 1}`);
-						const functionName = document
+						let actualDoc = document;
+						if (document.uri.path !== l.targetUri.path) {
+							actualDoc = await vscode.workspace.openTextDocument(l.targetUri);
+						}
+						const functionName = actualDoc
 							.lineAt(line)
 							.text.slice(
 								l.targetSelectionRange?.start.character,
 								l.targetSelectionRange?.end.character,
 							);
-						getPathFromLine(line, functionName);
+						getPathFromLine(actualDoc, line, functionName);
 					}
 				} else {
 					console.log("未找到函数定义");
 				}
 
-				function getPathFromLine(line: number, functionName: string) {
+				function getPathFromLine(
+					document: vscode.TextDocument,
+					line: number,
+					functionName: string,
+				) {
 					const lastLine = line - 1;
 					if (lastLine < 0) {
 						return null;
