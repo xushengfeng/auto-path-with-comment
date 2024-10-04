@@ -78,9 +78,25 @@ export function activate(context: vscode.ExtensionContext) {
 						return null;
 					}
 					const prevLine = document.lineAt(lastLine);
-					const baseUrlM = prevLine.text.match(/@auto-path:\s*(.+)/);
+					const commandR = /^\s*\/\//;
+					const baseUrlM = prevLine.text
+						.replace(commandR, "")
+						.trim()
+						.startsWith("@auto-path:");
 					if (baseUrlM) {
-						const baseUrl = baseUrlM[1].trim();
+						const pathR = prevLine.text
+							.replace(commandR, "")
+							.trim()
+							.replace("@auto-path:", "")
+							.trim();
+						console.log(pathR);
+
+						let baseUrl = pathR;
+						let replaceName: null | [string, string] = null;
+						if (path.basename(pathR).includes("$")) {
+							baseUrl = path.dirname(pathR);
+							replaceName = path.basename(pathR).split("$") as [string, string];
+						}
 						const completionItems: vscode.CompletionItem[] = [];
 
 						const currentDir = path.dirname(document.uri.fsPath);
@@ -90,7 +106,13 @@ export function activate(context: vscode.ExtensionContext) {
 
 						try {
 							const files = fs.readdirSync(fullBaseUrl);
-							for (const file of files) {
+							for (const file of files.filter(
+								(f) =>
+									!replaceName ||
+									(replaceName.join("").length <= f.length &&
+										f.startsWith(replaceName[0]) &&
+										f.endsWith(replaceName[1])),
+							)) {
 								const item = new vscode.CompletionItem(`${file}`);
 								const fileType = fs.lstatSync(path.join(fullBaseUrl, file));
 								if (fileType.isDirectory()) {
@@ -98,7 +120,14 @@ export function activate(context: vscode.ExtensionContext) {
 									item.insertText = new vscode.SnippetString(`${file}/`);
 								} else {
 									item.kind = vscode.CompletionItemKind.File;
-									item.insertText = new vscode.SnippetString(`${file}`);
+									let n = file;
+									if (replaceName) {
+										n = file.slice(
+											replaceName[0].length,
+											-replaceName[1].length,
+										);
+									}
+									item.insertText = new vscode.SnippetString(`${n}`);
 								}
 								completionItems.push(item);
 								functionName2seg.set(functionName, completionItems);
